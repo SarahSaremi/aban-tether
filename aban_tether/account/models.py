@@ -1,3 +1,12 @@
 from django.db import models
 
-# Create your models here.
+
+class Account(models.Model):
+    username = models.CharField(max_length=255)
+    email = models.CharField(max_length=255)
+    joined_date = models.DateField(auto_now_add=True)
+
+
+class Wallet(models.Model):
+    account = models.OneToOneField(to='account.Account', on_delete=models.CASCADE)
+    balance = models.DecimalField(max_digits=10, decimal_places=2)  # Used DecimalField to prevent float rounding issues
