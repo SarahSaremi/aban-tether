@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  postgres:
+    container_name: abangres
+    restart: always
+    image: postgres:15
+    ports:
+      - "8000:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    volumes:
+      - /home/postgres/abangres:/var/lib/postgresql/data
