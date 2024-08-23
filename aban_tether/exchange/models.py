@@ -1,6 +1,8 @@
+from decimal import Decimal
+
 from django.db import models
 
-from .enums import ORDER_STATUS_PENDING, CRYPTO_CHOICES, ORDER_STATUS_CHOICES
+from .enums import ORDER_STATUS_PENDING, CRYPTO_CHOICES, ORDER_STATUS_CHOICES, CRYPTO_PRICES
 
 
 class Order(models.Model):

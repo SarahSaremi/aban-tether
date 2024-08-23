@@ -1,5 +1,6 @@
-from django.test import TestCase
 from decimal import Decimal
+
+from django.test import TestCase
 
 from account.models import Wallet, Account
 from exchange.models import Order
@@ -16,6 +17,6 @@ class ModelsTestCase(TestCase):
         self.assertEqual(self.wallet.balance, Decimal('100.00'))
 
     def test_create_order(self):
-        order = Order.objects.create(account=self.account, amount=Decimal('20.00'))
+        order = Order.objects.create(account=self.account, amount=Decimal('20.00'), crypto_currency='tether')
         self.assertEqual(order.amount, Decimal('20.00'))
         self.assertEqual(order.status, ORDER_STATUS_PENDING)

@@ -13,7 +13,7 @@ class OrderServiceTests(TestCase):
 
     def test_create_order_with_sufficient_funds(self):
         service = OrderService(self.account)
-        order = service.create_order(Decimal('25.00'))
+        order = service.create_order(Decimal('25.00'), crypto='tether')
 
         self.assertEqual(Order.objects.count(), 1)
         self.assertEqual(Order.objects.first().amount, Decimal('25.00'))
@@ -24,7 +24,7 @@ class OrderServiceTests(TestCase):
         service = OrderService(self.account)
 
         with self.assertRaises(InsufficientFundsError):
-            service.create_order(Decimal('150.00'))
+            service.create_order(Decimal('150.00'), crypto='tether')
 
         self.assertEqual(Order.objects.count(), 0)
         self.wallet.refresh_from_db()

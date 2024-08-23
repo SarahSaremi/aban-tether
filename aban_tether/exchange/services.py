@@ -12,9 +12,9 @@ class OrderService:
     def __init__(self, account):
         self.account = account
 
-    def create_order(self, amount):
+    def create_order(self, amount, crypto):
         if self.withdraw_from_wallet(amount):
-            order = Order.objects.create(account=self.account, amount=amount)
+            order = Order.objects.create(account=self.account, amount=amount, crypto_currency=crypto)
             return order
         else:
             raise InsufficientFundsError("Insufficient funds in wallet")

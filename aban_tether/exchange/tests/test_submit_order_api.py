@@ -23,7 +23,8 @@ class SubmitOrderAPITests(APITestCase):
         url = reverse('submit-order')
         data = {
             "account_id": self.account1.id,
-            "amount": "10.00"
+            "amount": "10.00",
+            "crypto": "tether",
         }
 
         response = self.client.post(url, data, format='json')
@@ -45,7 +46,8 @@ class SubmitOrderAPITests(APITestCase):
         url = reverse('submit-order')
         data = {
             "account_id": self.account2.id,
-            "amount": "10.00"
+            "amount": "10.00",
+            "crypto": "tether",
         }
 
         response = self.client.post(url, data, format='json')
@@ -65,7 +67,8 @@ class SubmitOrderAPITests(APITestCase):
         url = reverse('submit-order')
         data = {
             "account_id": self.account2.id,
-            "amount": "5.00"
+            "amount": "5.00",
+            "crypto": "tether",
         }
 
         response = self.client.post(url, data, format='json')
@@ -86,7 +89,8 @@ class SubmitOrderAPITests(APITestCase):
     def test_submit_order_without_account(self):
         url = reverse('submit-order')
         data = {
-            "amount": "10.00"
+            "amount": "10.00",
+            "crypto": "tether",
         }
 
         response = self.client.post(url, data, format='json')
