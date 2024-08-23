@@ -1,11 +1,15 @@
+import logging
 import random
 
 from celery import shared_task
-from django.db.models import Sum
+from django.db import transaction
 
-from .enums import ORDER_STATUS_PENDING, EXCHANGE_THRESHOLD, ORDER_STATUS_PROCESSED, ORDER_STATUS_FAILED
+from .enums import ORDER_STATUS_PENDING, EXCHANGE_THRESHOLD, ORDER_STATUS_PROCESSED, ORDER_STATUS_FAILED, \
+    ORDER_STATUS_PROCESSING
 from .models import Order
-import uuid
+
+
+logger = logging.getLogger(__name__)
 
 
 def buy_from_exchange(orders):
@@ -19,30 +23,25 @@ def buy_from_exchange(orders):
 @shared_task
 def aggregate_and_buy_from_exchange():
     pending_orders = Order.objects.filter(status=ORDER_STATUS_PENDING)
-    total_price = pending_orders.aggregate(Sum('price'))['price__sum'] or 0
 
-    if total_price >= EXCHANGE_THRESHOLD:
-        print('total_amount', total_price)
-        batch_id = uuid.uuid4()
-        orders_to_process = []
+    if not pending_orders.exists():
+        logger.info('No pending orders to process.')
+        return
 
-        current_sum = 0
-        for order in pending_orders:
-            print('order', order)
-            if current_sum + order.amount > EXCHANGE_THRESHOLD:
-                break
-            current_sum += order.amount
-            orders_to_process.append(order)
+    total_amount = sum(order.price for order in pending_orders)
 
-        print('orders_to_process', orders_to_process)
-        if orders_to_process:
-            for order in orders_to_process:
-                order.status = ORDER_STATUS_PROCESSED
-                order.batch_id = batch_id
-                order.save()
+    if total_amount < EXCHANGE_THRESHOLD:
+        logger.info(f'Total pending order amount ({total_amount}) is less than ${EXCHANGE_THRESHOLD}. Aggregation postponed.')
+        return
 
-            response = buy_from_exchange(orders_to_process)
-            if response['status_code'] == 200:
-                Order.objects.filter(batch_id=batch_id).update(status=ORDER_STATUS_PROCESSED)
-            else:
-                Order.objects.filter(batch_id=batch_id).update(status=ORDER_STATUS_FAILED)
+    batch_id = Order.assign_batch_id(pending_orders)
+    response = buy_from_exchange(pending_orders)
+
+    if response['status_code'] != 200:
+        logger.error(f'Failed to buy from foreign exchange.')
+        Order.rollback_batch(batch_id)
+        return
+
+    with transaction.atomic():
+        Order.objects.filter(status=ORDER_STATUS_PROCESSING, batch_id=batch_id).update(status=ORDER_STATUS_PROCESSED)
+        logger.info(f'Successfully completed orders in batch {batch_id}.')

@@ -1,102 +1,67 @@
-from rest_framework.test import APITestCase, APIClient
-from rest_framework import status
+from django.test import TestCase
 from decimal import Decimal
-from django.urls import reverse
+from unittest.mock import patch
 
 from account.models import Account, Wallet
+
 from exchange.models import Order
+from exchange.tasks import aggregate_and_buy_from_exchange
+from exchange.enums import ORDER_STATUS_PROCESSED
+
+from exchange.enums import ORDER_STATUS_FAILED
 
 
-class SubmitOrderAPITests(APITestCase):
+class OrderRollbackTests(TestCase):
 
     def setUp(self):
-        self.client = APIClient()
+        self.account = Account.objects.create(username="Test Customer", email="<EMAIL>")
+        self.wallet = Wallet.objects.create(account=self.account, balance=Decimal('100.00'))
 
-        # Set up s and wallets
-        self.account1 = Account.objects.create(username="account 1", email='hi@hio')
-        self.wallet1 = Wallet.objects.create(account=self.account1, balance=Decimal('50.00'))
+    def test_rollback_order(self):
+        order = Order.create_order(self.account, 50.00, crypto_currency='tether')
+        batch_id = Order.assign_batch_id(Order.objects.filter(id=order.id))
 
-        self.account2 = Account.objects.create(username="account 2", email='hi@hio')
-        self.wallet2 = Wallet.objects.create(account=self.account2, balance=Decimal('5.00'))
+        Order.rollback_batch(batch_id)
 
-    def test_submit_order_with_sufficient_funds(self):
-        url = reverse('submit-order')
-        data = {
-            "account_id": self.account1.id,
-            "amount": "10.00",
-            "crypto": "tether",
-        }
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal('100.00'))
 
-        response = self.client.post(url, data, format='json')
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'failed')
 
-        # Assert that the response is successful
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+    @patch('exchange.tasks.buy_from_exchange')
+    def test_aggregate_and_buy_from_exchange_with_failure(self, mock_buy_from_exchange):
+        order1 = Order.create_order(self.account, 5.00, crypto_currency='tether')
+        order2 = Order.create_order(self.account, 6.00, crypto_currency='tether')
 
-        # Verify that the order was created
-        self.assertEqual(Order.objects.count(), 1)
-        order = Order.objects.first()
-        self.assertEqual(order.account, self.account1)
-        self.assertEqual(order.amount, Decimal('10.00'))
+        mock_buy_from_exchange.return_value = {'status_code': 500}
 
-        # Verify that the wallet balance was deducted
-        self.wallet1.refresh_from_db()
-        self.assertEqual(self.wallet1.balance, Decimal('40.00'))
+        aggregate_and_buy_from_exchange()
 
-    def test_submit_order_with_insufficient_funds(self):
-        url = reverse('submit-order')
-        data = {
-            "account_id": self.account2.id,
-            "amount": "10.00",
-            "crypto": "tether",
-        }
+        order1.refresh_from_db()
+        order2.refresh_from_db()
+        self.assertEqual(order1.status, ORDER_STATUS_FAILED)
+        self.assertEqual(order2.status, ORDER_STATUS_FAILED)
 
-        response = self.client.post(url, data, format='json')
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal('100.00'))
 
-        # Assert that the response indicates insufficient funds
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['error'], "Insufficient funds")
+    @patch('requests.post')
+    def test_aggregate_and_buy_from_exchange_with_success(self, mock_post):
+        order1 = Order.create_order(self.account, 5.00, crypto_currency='tether')
+        order2 = Order.create_order(self.account, 6.00, crypto_currency='tether')
 
-        # Verify that no order was created
-        self.assertEqual(Order.objects.count(), 0)
+        mock_post.return_value = {'status_code': 200}
 
-        # Verify that the wallet balance remains unchanged
-        self.wallet2.refresh_from_db()
-        self.assertEqual(self.wallet2.balance, Decimal('5.00'))
+        aggregate_and_buy_from_exchange()
 
-    def test_submit_order_with_exact_funds(self):
-        url = reverse('submit-order')
-        data = {
-            "account_id": self.account2.id,
-            "amount": "5.00",
-            "crypto": "tether",
-        }
+        order1.refresh_from_db()
+        order2.refresh_from_db()
+        self.assertEqual(order1.status, ORDER_STATUS_PROCESSED)
+        self.assertEqual(order2.status, ORDER_STATUS_PROCESSED)
 
-        response = self.client.post(url, data, format='json')
+        self.assertIsNotNone(order1.batch_id)
+        self.assertEqual(order1.batch_id, order2.batch_id)
 
-        # Assert that the response is successful
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-        # Verify that the order was created
-        self.assertEqual(Order.objects.count(), 1)
-        order = Order.objects.first()
-        self.assertEqual(order.account, self.account2)
-        self.assertEqual(order.amount, Decimal('5.00'))
-
-        # Verify that the wallet balance was deducted
-        self.wallet2.refresh_from_db()
-        self.assertEqual(self.wallet2.balance, Decimal('0.00'))
-
-    def test_submit_order_without_account(self):
-        url = reverse('submit-order')
-        data = {
-            "amount": "10.00",
-            "crypto": "tether",
-        }
-
-        response = self.client.post(url, data, format='json')
-
-        # Assert that the response indicates a bad request due to missing account
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-        # Verify that no order was created
-        self.assertEqual(Order.objects.count(), 0)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance, Decimal('89.00'))

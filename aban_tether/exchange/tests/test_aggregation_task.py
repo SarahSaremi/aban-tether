@@ -17,9 +17,8 @@ class CeleryTaskTests(TestCase):
         Wallet.objects.create(account=self.account1, balance=Decimal('50.00'))
         Wallet.objects.create(account=self.account2, balance=Decimal('50.00'))
 
-        # Create some pending orders
-        Order.objects.create(account=self.account1, amount=Decimal('5.00'), crypto_currency='tether')
-        Order.objects.create(account=self.account2, amount=Decimal('5.00'), crypto_currency='tether')
+        Order.objects.create(account=self.account1, amount=Decimal('5.00'), crypto_currency='tether', price=Decimal('5.00'))
+        Order.objects.create(account=self.account2, amount=Decimal('5.00'), crypto_currency='tether', price=Decimal('5.00'))
 
     @patch('exchange.tasks.buy_from_exchange')
     def test_aggregate_and_buy_from_exchange(self, mock_buy_from_exchange):
@@ -29,6 +28,4 @@ class CeleryTaskTests(TestCase):
 
         mock_buy_from_exchange.assert_called_once()
         self.assertEqual(Order.objects.filter(status=ORDER_STATUS_PROCESSED).count(), 2)
-
-        # Check if no pending orders remain
         self.assertEqual(Order.objects.filter(status=ORDER_STATUS_PENDING).count(), 0)
